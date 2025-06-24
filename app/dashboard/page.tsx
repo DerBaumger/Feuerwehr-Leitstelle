@@ -25,20 +25,48 @@ import {
 } from "lucide-react"
 import Navigation from "@/components/navigation"
 import { useRouter } from "next/navigation"
-import type { User, Vehicle, Emergency, StatusLogEntry, Statistics, DashboardWidget } from "@/lib/types"
-import { formatRelativeTime, hasPermission, storage, measurePerformance } from "@/lib/utils"
 
-interface DashboardState {
-  vehicles: Vehicle[]
-  emergencies: Emergency[]
-  statusLog: StatusLogEntry[]
-  statistics: Statistics | null
-  widgets: DashboardWidget[]
-  isFullscreen: boolean
-  autoRefresh: boolean
-  refreshInterval: number
-  soundEnabled: boolean
-  showInactive: boolean
+interface User {
+  id: string
+  username: string
+  role: string
+  station: string
+}
+
+interface Vehicle {
+  id: string
+  callSign: string
+  type: string
+  station: string
+  status: number
+  location: string
+  lastUpdate?: string
+  isOperational?: boolean
+  crew?: string[]
+}
+
+interface Emergency {
+  id: string
+  title: string
+  description: string
+  location: string
+  priority: string
+  status: string
+  createdAt: string
+  assignedVehicles: string[]
+  coordinates: { lat: number; lng: number }
+}
+
+interface StatusLogEntry {
+  id: string
+  vehicleId: string
+  vehicleCallSign: string
+  oldStatus: number
+  newStatus: number
+  timestamp: string
+  confirmed: boolean
+  jSprechSent?: boolean
+  userId?: string
 }
 
 const STATUS_LABELS = {
@@ -70,38 +98,41 @@ const STATUS_COLORS = {
 export default function ProfessionalDashboard() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
-  const [state, setState] = useState<DashboardState>({
-    vehicles: [],
-    emergencies: [],
-    statusLog: [],
-    statistics: null,
-    widgets: [],
-    isFullscreen: false,
-    autoRefresh: true,
-    refreshInterval: 5000,
-    soundEnabled: true,
-    showInactive: false,
-  })
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [emergencies, setEmergencies] = useState<Emergency[]>([])
+  const [statusLog, setStatusLog] = useState<StatusLogEntry[]>([])
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [autoRefresh, setAutoRefresh] = useState(true)
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [showInactive, setShowInactive] = useState(false)
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+  const [isClient, setIsClient] = useState(false)
 
   const audioContextRef = useRef<AudioContext | null>(null)
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const lastUpdateRef = useRef<Date>(new Date())
+
+  // Client-side only
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   // Audio Context initialisieren
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
-    }
+    if (!isClient) return
+
+    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
 
     return () => {
       if (audioContextRef.current) {
         audioContextRef.current.close()
       }
     }
-  }, [])
+  }, [isClient])
 
   // Benutzer-Authentifizierung
   useEffect(() => {
+    if (!isClient) return
+
     const userData = localStorage.getItem("user")
     if (!userData) {
       router.push("/")
@@ -116,25 +147,27 @@ export default function ProfessionalDashboard() {
       console.error("Fehler beim Laden der Benutzerdaten:", error)
       router.push("/")
     }
-  }, [router])
+  }, [router, isClient])
 
   // Auto-Refresh
   useEffect(() => {
-    if (state.autoRefresh && user) {
-      refreshIntervalRef.current = setInterval(() => {
-        loadDashboardData(user)
-      }, state.refreshInterval)
+    if (!isClient || !autoRefresh || !user) return
 
-      return () => {
-        if (refreshIntervalRef.current) {
-          clearInterval(refreshIntervalRef.current)
-        }
+    refreshIntervalRef.current = setInterval(() => {
+      loadDashboardData(user)
+    }, 5000)
+
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current)
       }
     }
-  }, [state.autoRefresh, state.refreshInterval, user])
+  }, [autoRefresh, user, isClient])
 
   // Storage Event Listener
   useEffect(() => {
+    if (!isClient) return
+
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === "vehicles" || e.key === "emergencies" || e.key === "statusLog" || e.key === "stations") {
         if (user) {
@@ -145,10 +178,12 @@ export default function ProfessionalDashboard() {
 
     window.addEventListener("storage", handleStorageChange)
     return () => window.removeEventListener("storage", handleStorageChange)
-  }, [user])
+  }, [user, isClient])
 
   // Keyboard Shortcuts
   useEffect(() => {
+    if (!isClient) return
+
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) {
         switch (e.key) {
@@ -170,161 +205,63 @@ export default function ProfessionalDashboard() {
 
     window.addEventListener("keydown", handleKeyPress)
     return () => window.removeEventListener("keydown", handleKeyPress)
-  }, [user])
+  }, [user, isClient])
 
-  const loadDashboardData = useCallback((currentUser: User) => {
-    measurePerformance("Dashboard Data Load", () => {
+  const loadDashboardData = useCallback(
+    (currentUser: User) => {
+      if (!isClient) return
+
       try {
-        // Fahrzeuge laden - NULL CHECK HINZUGEFÜGT
-        const savedVehicles = storage.get<Vehicle[]>("vehicles", [])
+        // Fahrzeuge laden
+        const savedVehicles = localStorage.getItem("vehicles")
         let userVehicles: Vehicle[] = []
 
-        if (savedVehicles && Array.isArray(savedVehicles)) {
-          userVehicles = savedVehicles
+        if (savedVehicles) {
+          const allVehicles = JSON.parse(savedVehicles)
+          userVehicles = allVehicles
 
           // Für Feuerwehrleute nur Fahrzeuge der eigenen Wache
           if (currentUser.role === "firefighter") {
-            userVehicles = savedVehicles.filter((v) => v.station === currentUser.station)
+            userVehicles = allVehicles.filter((v: Vehicle) => v.station === currentUser.station)
           }
         }
 
-        // Einsätze laden - NULL CHECK HINZUGEFÜGT
-        const savedEmergencies = storage.get<Emergency[]>("emergencies", [])
+        // Einsätze laden
+        const savedEmergencies = localStorage.getItem("emergencies")
         let activeEmergencies: Emergency[] = []
 
-        if (savedEmergencies && Array.isArray(savedEmergencies)) {
-          activeEmergencies = savedEmergencies.filter((e) => e.status === "active")
+        if (savedEmergencies) {
+          const allEmergencies = JSON.parse(savedEmergencies)
+          activeEmergencies = allEmergencies.filter((e: Emergency) => e.status === "active")
         }
 
-        // Status-Log laden - NULL CHECK HINZUGEFÜGT
-        const savedStatusLog = storage.get<StatusLogEntry[]>("statusLog", [])
+        // Status-Log laden
+        const savedStatusLog = localStorage.getItem("statusLog")
         let userStatusLog: StatusLogEntry[] = []
 
-        if (savedStatusLog && Array.isArray(savedStatusLog)) {
-          userStatusLog = savedStatusLog
+        if (savedStatusLog) {
+          userStatusLog = JSON.parse(savedStatusLog)
 
           // Für Feuerwehrleute nur Status-Log der eigenen Wache
           if (currentUser.role === "firefighter") {
             const userVehicleIds = userVehicles.map((v) => v.id)
-            userStatusLog = savedStatusLog.filter((entry) => userVehicleIds.includes(entry.vehicleId))
+            userStatusLog = userStatusLog.filter((entry) => userVehicleIds.includes(entry.vehicleId))
           }
         }
 
-        // Statistiken berechnen
-        const statistics = calculateStatistics(userVehicles, activeEmergencies, userStatusLog)
-
-        setState((prev) => ({
-          ...prev,
-          vehicles: userVehicles,
-          emergencies: activeEmergencies,
-          statusLog: userStatusLog.slice(0, 50), // Nur die letzten 50 Einträge
-          statistics,
-        }))
-
-        lastUpdateRef.current = new Date()
+        setVehicles(userVehicles)
+        setEmergencies(activeEmergencies)
+        setStatusLog(userStatusLog.slice(0, 50)) // Nur die letzten 50 Einträge
+        setLastUpdate(new Date())
       } catch (error) {
         console.error("Fehler beim Laden der Dashboard-Daten:", error)
       }
-    })
-  }, [])
-
-  const calculateStatistics = (
-    vehicles: Vehicle[],
-    emergencies: Emergency[],
-    statusLog: StatusLogEntry[],
-  ): Statistics => {
-    const now = new Date()
-    const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-
-    // Fahrzeug-Statistiken
-    const vehicleStats = {
-      total: vehicles.length,
-      available: vehicles.filter((v) => v.status === 2 && v.isOperational).length,
-      inUse: vehicles.filter((v) => [3, 4, 7, 8].includes(v.status)).length,
-      outOfService: vehicles.filter((v) => !v.isOperational || v.status === 6).length,
-      byType: vehicles.reduce(
-        (acc, v) => {
-          // Sichere String-Konvertierung für den Fahrzeugtyp
-          let typeName: string
-          if (typeof v.type === "string") {
-            typeName = v.type
-          } else if (v.type && typeof v.type === "object" && "name" in v.type) {
-            typeName = String(v.type.name)
-          } else {
-            typeName = "Unbekannt"
-          }
-
-          acc[typeName] = (acc[typeName] || 0) + 1
-          return acc
-        },
-        {} as Record<string, number>,
-      ),
-    }
-
-    // Einsatz-Statistiken
-    const emergencyStats = {
-      total: emergencies.length,
-      byPriority: emergencies.reduce(
-        (acc, e) => {
-          const priority = String(e.priority) // Sichere String-Konvertierung
-          acc[priority] = (acc[priority] || 0) + 1
-          return acc
-        },
-        {} as Record<string, number>,
-      ),
-      byCategory: emergencies.reduce(
-        (acc, e) => {
-          // Sichere String-Konvertierung für die Kategorie
-          let categoryName: string
-          if (typeof e.category === "string") {
-            categoryName = e.category
-          } else if (e.category && typeof e.category === "object" && "name" in e.category) {
-            categoryName = String(e.category.name)
-          } else {
-            categoryName = "Unbekannt"
-          }
-
-          acc[categoryName] = (acc[categoryName] || 0) + 1
-          return acc
-        },
-        {} as Record<string, number>,
-      ),
-      byStatus: emergencies.reduce(
-        (acc, e) => {
-          const status = String(e.status) // Sichere String-Konvertierung
-          acc[status] = (acc[status] || 0) + 1
-          return acc
-        },
-        {} as Record<string, number>,
-      ),
-      averageResponseTime: 0, // TODO: Berechnen basierend auf historischen Daten
-      averageDuration: 0, // TODO: Berechnen basierend auf historischen Daten
-    }
-
-    return {
-      period: {
-        start: last24h.toISOString(),
-        end: now.toISOString(),
-      },
-      emergencies: emergencyStats,
-      vehicles: vehicleStats,
-      personnel: {
-        total: 0, // TODO: Aus Benutzerdaten berechnen
-        onDuty: 0,
-        available: 0,
-        inTraining: 0,
-      },
-      performance: {
-        responseTimeCompliance: 95, // TODO: Echte Berechnung
-        equipmentReadiness:
-          vehicleStats.total > 0 ? Math.round((vehicleStats.available / vehicleStats.total) * 100) : 0,
-        personnelReadiness: 90, // TODO: Echte Berechnung
-      },
-    }
-  }
+    },
+    [isClient],
+  )
 
   const createGongTone = (frequency: number, duration: number, volume = 0.3) => {
-    if (!audioContextRef.current || !state.soundEnabled) return
+    if (!audioContextRef.current || !soundEnabled || !isClient) return
 
     const oscillator = audioContextRef.current.createOscillator()
     const gainNode = audioContextRef.current.createGain()
@@ -344,7 +281,7 @@ export default function ProfessionalDashboard() {
   }
 
   const playAlarmGong = async () => {
-    if (!state.soundEnabled) return
+    if (!soundEnabled || !isClient) return
 
     return new Promise<void>((resolve) => {
       if (!audioContextRef.current) {
@@ -362,52 +299,55 @@ export default function ProfessionalDashboard() {
   }
 
   const speakAlert = async (text: string, withAlarmGong = false) => {
-    if ("speechSynthesis" in window) {
-      if (withAlarmGong) {
-        await playAlarmGong()
-        await new Promise((resolve) => setTimeout(resolve, 500))
-      }
+    if (!isClient || !("speechSynthesis" in window)) return
 
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.lang = "de-DE"
-      utterance.rate = 0.7
-      utterance.pitch = 1.0
-      utterance.volume = 0.9
-
-      const voices = speechSynthesis.getVoices()
-      const germanVoice = voices.find((voice) => voice.lang.startsWith("de"))
-      if (germanVoice) {
-        utterance.voice = germanVoice
-      }
-
-      speechSynthesis.speak(utterance)
+    if (withAlarmGong) {
+      await playAlarmGong()
+      await new Promise((resolve) => setTimeout(resolve, 500))
     }
+
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = "de-DE"
+    utterance.rate = 0.7
+    utterance.pitch = 1.0
+    utterance.volume = 0.9
+
+    const voices = speechSynthesis.getVoices()
+    const germanVoice = voices.find((voice) => voice.lang.startsWith("de"))
+    if (germanVoice) {
+      utterance.voice = germanVoice
+    }
+
+    speechSynthesis.speak(utterance)
   }
 
   const toggleFullscreen = () => {
+    if (!isClient) return
+
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen()
-      setState((prev) => ({ ...prev, isFullscreen: true }))
+      setIsFullscreen(true)
     } else {
       document.exitFullscreen()
-      setState((prev) => ({ ...prev, isFullscreen: false }))
+      setIsFullscreen(false)
     }
   }
 
   const toggleSound = () => {
-    setState((prev) => ({ ...prev, soundEnabled: !prev.soundEnabled }))
+    setSoundEnabled(!soundEnabled)
   }
 
   const toggleAutoRefresh = () => {
-    setState((prev) => ({ ...prev, autoRefresh: !prev.autoRefresh }))
+    setAutoRefresh(!autoRefresh)
   }
 
   const exportData = () => {
+    if (!isClient) return
+
     const exportData = {
-      vehicles: state.vehicles,
-      emergencies: state.emergencies,
-      statusLog: state.statusLog,
-      statistics: state.statistics,
+      vehicles,
+      emergencies,
+      statusLog,
       timestamp: new Date().toISOString(),
       user: user?.username,
     }
@@ -422,8 +362,22 @@ export default function ProfessionalDashboard() {
     URL.revokeObjectURL(url)
   }
 
+  const formatRelativeTime = (date: Date | string) => {
+    const now = new Date()
+    const target = new Date(date)
+    const diffMs = now.getTime() - target.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+
+    if (diffMins < 1) return "Gerade eben"
+    if (diffMins < 60) return `vor ${diffMins} Min`
+    const diffHours = Math.floor(diffMins / 60)
+    if (diffHours < 24) return `vor ${diffHours}h`
+    const diffDays = Math.floor(diffHours / 24)
+    return `vor ${diffDays}d`
+  }
+
   const getVehiclesByStatus = () => {
-    const statusGroups = state.vehicles.reduce(
+    return vehicles.reduce(
       (acc, vehicle) => {
         if (!acc[vehicle.status]) {
           acc[vehicle.status] = []
@@ -433,19 +387,17 @@ export default function ProfessionalDashboard() {
       },
       {} as Record<number, Vehicle[]>,
     )
-
-    return statusGroups
   }
 
   const getActiveEmergenciesWithVehicles = () => {
-    return state.emergencies.map((emergency) => ({
+    return emergencies.map((emergency) => ({
       ...emergency,
-      assignedVehicleDetails: state.vehicles.filter((v) => emergency.assignedVehicles.includes(v.id)),
+      assignedVehicleDetails: vehicles.filter((v) => emergency.assignedVehicles.includes(v.id)),
     }))
   }
 
   const getRecentStatusChanges = () => {
-    return state.statusLog
+    return statusLog
       .filter((entry) => {
         const entryTime = new Date(entry.timestamp)
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
@@ -454,11 +406,18 @@ export default function ProfessionalDashboard() {
       .slice(0, 10)
   }
 
-  if (!user) return null
+  // Render nothing on server-side
+  if (!isClient || !user) return null
 
   const vehiclesByStatus = getVehiclesByStatus()
   const emergenciesWithVehicles = getActiveEmergenciesWithVehicles()
   const recentStatusChanges = getRecentStatusChanges()
+
+  // Statistics
+  const totalVehicles = vehicles.length
+  const availableVehicles = vehicles.filter((v) => v.status === 2 && v.isOperational !== false).length
+  const inUseVehicles = vehicles.filter((v) => [3, 4, 7, 8].includes(v.status)).length
+  const outOfServiceVehicles = vehicles.filter((v) => v.isOperational === false || v.status === 6).length
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -475,25 +434,21 @@ export default function ProfessionalDashboard() {
                 <span className="text-sm text-blue-600 ml-2">(Wache: {user.station})</span>
               )}
             </p>
-            <p className="text-xs text-gray-500">Letzte Aktualisierung: {formatRelativeTime(lastUpdateRef.current)}</p>
+            <p className="text-xs text-gray-500">Letzte Aktualisierung: {formatRelativeTime(lastUpdate)}</p>
           </div>
 
           {/* Dashboard Controls */}
           <div className="flex items-center gap-2">
-            <Button
-              onClick={() => setState((prev) => ({ ...prev, showInactive: !prev.showInactive }))}
-              variant="outline"
-              size="sm"
-            >
-              {state.showInactive ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            <Button onClick={() => setShowInactive(!showInactive)} variant="outline" size="sm">
+              {showInactive ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
 
             <Button onClick={toggleSound} variant="outline" size="sm">
-              <Volume2 className={`h-4 w-4 ${state.soundEnabled ? "text-green-600" : "text-gray-400"}`} />
+              <Volume2 className={`h-4 w-4 ${soundEnabled ? "text-green-600" : "text-gray-400"}`} />
             </Button>
 
             <Button onClick={toggleAutoRefresh} variant="outline" size="sm">
-              <RefreshCw className={`h-4 w-4 ${state.autoRefresh ? "text-green-600 animate-spin" : "text-gray-400"}`} />
+              <RefreshCw className={`h-4 w-4 ${autoRefresh ? "text-green-600 animate-spin" : "text-gray-400"}`} />
             </Button>
 
             <Button onClick={exportData} variant="outline" size="sm">
@@ -501,7 +456,7 @@ export default function ProfessionalDashboard() {
             </Button>
 
             <Button onClick={toggleFullscreen} variant="outline" size="sm">
-              {state.isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
 
             <Button onClick={() => user && loadDashboardData(user)} variant="outline" size="sm">
@@ -511,70 +466,63 @@ export default function ProfessionalDashboard() {
         </div>
 
         {/* Statistics Cards */}
-        {state.statistics && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Aktive Einsätze</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-red-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{state.statistics.emergencies.total}</div>
-                <p className="text-xs text-muted-foreground">
-                  {state.statistics.emergencies.byPriority.critical || 0} kritisch
-                </p>
-              </CardContent>
-            </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Aktive Einsätze</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{emergencies.length}</div>
+              <p className="text-xs text-muted-foreground">
+                {emergencies.filter((e) => e.priority === "high").length} kritisch
+              </p>
+            </CardContent>
+          </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Verfügbare Fahrzeuge</CardTitle>
-                <Truck className="h-4 w-4 text-green-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {state.statistics.vehicles.available}/{state.statistics.vehicles.total}
-                </div>
-                <Progress
-                  value={
-                    state.statistics.vehicles.total > 0
-                      ? (state.statistics.vehicles.available / state.statistics.vehicles.total) * 100
-                      : 0
-                  }
-                  className="mt-2"
-                />
-              </CardContent>
-            </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Verfügbare Fahrzeuge</CardTitle>
+              <Truck className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {availableVehicles}/{totalVehicles}
+              </div>
+              <Progress value={totalVehicles > 0 ? (availableVehicles / totalVehicles) * 100 : 0} className="mt-2" />
+            </CardContent>
+          </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Einsatzbereitschaft</CardTitle>
-                <Activity className="h-4 w-4 text-blue-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{state.statistics.performance.equipmentReadiness}%</div>
-                <p className="text-xs text-muted-foreground">{state.statistics.vehicles.outOfService} außer Betrieb</p>
-              </CardContent>
-            </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Einsatzbereitschaft</CardTitle>
+              <Activity className="h-4 w-4 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {totalVehicles > 0 ? Math.round((availableVehicles / totalVehicles) * 100) : 0}%
+              </div>
+              <p className="text-xs text-muted-foreground">{outOfServiceVehicles} außer Betrieb</p>
+            </CardContent>
+          </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Status-Änderungen</CardTitle>
-                <Radio className="h-4 w-4 text-purple-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{recentStatusChanges.length}</div>
-                <p className="text-xs text-muted-foreground">Letzte Stunde</p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Status-Änderungen</CardTitle>
+              <Radio className="h-4 w-4 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{recentStatusChanges.length}</div>
+              <p className="text-xs text-muted-foreground">Letzte Stunde</p>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="emergencies" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="emergencies">Aktive Einsätze ({state.emergencies.length})</TabsTrigger>
-            <TabsTrigger value="vehicles">Fahrzeugstatus ({state.vehicles.length})</TabsTrigger>
+            <TabsTrigger value="emergencies">Aktive Einsätze ({emergencies.length})</TabsTrigger>
+            <TabsTrigger value="vehicles">Fahrzeugstatus ({vehicles.length})</TabsTrigger>
             <TabsTrigger value="status-log">Status-Log ({recentStatusChanges.length})</TabsTrigger>
           </TabsList>
 
@@ -588,7 +536,7 @@ export default function ProfessionalDashboard() {
                       <CardTitle className="flex items-center gap-2">
                         <AlertTriangle className="h-5 w-5 text-red-500" />
                         {emergency.title}
-                        <Badge variant={emergency.priority === "critical" ? "destructive" : "secondary"}>
+                        <Badge variant={emergency.priority === "high" ? "destructive" : "secondary"}>
                           {emergency.priority.toUpperCase()}
                         </Badge>
                       </CardTitle>
@@ -600,13 +548,11 @@ export default function ProfessionalDashboard() {
                         >
                           <Volume2 className="h-4 w-4" />
                         </Button>
-                        {hasPermission(user, "emergencies", "write") && (
-                          <Button asChild variant="outline" size="sm">
-                            <a href={`/emergencies/${emergency.id}`}>
-                              <FileText className="h-4 w-4" />
-                            </a>
-                          </Button>
-                        )}
+                        <Button asChild variant="outline" size="sm">
+                          <a href={`/emergencies`}>
+                            <FileText className="h-4 w-4" />
+                          </a>
+                        </Button>
                       </div>
                     </div>
                     <p className="text-gray-600 mt-2">{emergency.description}</p>
@@ -743,13 +689,13 @@ export default function ProfessionalDashboard() {
 
                 {/* Fahrzeug-Liste */}
                 <div className="space-y-4">
-                  {state.vehicles
-                    .filter((vehicle) => state.showInactive || vehicle.isOperational)
+                  {vehicles
+                    .filter((vehicle) => showInactive || vehicle.isOperational !== false)
                     .map((vehicle) => (
                       <div
                         key={vehicle.id}
                         className={`flex items-center justify-between p-4 border rounded-lg ${
-                          !vehicle.isOperational ? "bg-gray-50 opacity-75" : ""
+                          vehicle.isOperational === false ? "bg-gray-50 opacity-75" : ""
                         }`}
                       >
                         <div className="flex items-center gap-4">
@@ -759,21 +705,16 @@ export default function ProfessionalDashboard() {
                           <div>
                             <h3 className="font-semibold flex items-center gap-2">
                               {vehicle.callSign}
-                              {!vehicle.isOperational && (
+                              {vehicle.isOperational === false && (
                                 <Badge variant="destructive" className="text-xs">
                                   Außer Betrieb
                                 </Badge>
                               )}
                             </h3>
-                            <p className="text-sm text-gray-600">
-                              {typeof vehicle.type === "string" ? vehicle.type : vehicle.type?.name || "Unbekannt"}
-                            </p>
+                            <p className="text-sm text-gray-600">{vehicle.type}</p>
                             <p className="text-sm text-gray-500">{vehicle.station}</p>
                             {vehicle.crew && vehicle.crew.length > 0 && (
-                              <p className="text-xs text-blue-600">
-                                Besatzung:{" "}
-                                {vehicle.crew.map((c) => (typeof c === "string" ? c : c.username)).join(", ")}
-                              </p>
+                              <p className="text-xs text-blue-600">Besatzung: {vehicle.crew.join(", ")}</p>
                             )}
                           </div>
                         </div>

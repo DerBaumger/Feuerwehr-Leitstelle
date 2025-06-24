@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -33,8 +32,16 @@ export default function StationsPage() {
     address: "",
     description: "",
   })
+  const [isClient, setIsClient] = useState(false)
+
+  // Client-side only
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   useEffect(() => {
+    if (!isClient) return
+
     const userData = localStorage.getItem("user")
     if (!userData) {
       router.push("/")
@@ -56,14 +63,13 @@ export default function StationsPage() {
     if (savedVehicles) {
       setVehicles(JSON.parse(savedVehicles))
     }
-  }, [router])
+  }, [router, isClient])
 
   // Stations in localStorage speichern wenn sie sich ändern
   useEffect(() => {
-    if (stations.length > 0) {
-      localStorage.setItem("stations", JSON.stringify(stations))
-    }
-  }, [stations])
+    if (!isClient || stations.length === 0) return
+    localStorage.setItem("stations", JSON.stringify(stations))
+  }, [stations, isClient])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -115,7 +121,8 @@ export default function StationsPage() {
     return vehicles.filter((vehicle) => vehicle.station === stationName)
   }
 
-  if (!user) return null
+  // Render nothing on server-side
+  if (!isClient || !user) return null
 
   return (
     <div className="min-h-screen bg-gray-50">

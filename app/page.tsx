@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,7 +26,7 @@ export default function LoginPage() {
   }, [])
 
   const updateStats = () => {
-    if (typeof window === "undefined") return
+    if (!isClient) return
 
     const users = localStorage.getItem("users")
     const vehicles = localStorage.getItem("vehicles")
@@ -43,6 +42,8 @@ export default function LoginPage() {
   }
 
   const resetAllData = () => {
+    if (!isClient) return
+
     if (confirm("⚠️ ACHTUNG: Alle Daten (Benutzer, Fahrzeuge, Einsätze) werden gelöscht! Fortfahren?")) {
       localStorage.clear()
       sessionStorage.clear()
@@ -55,6 +56,8 @@ export default function LoginPage() {
   }
 
   const showAllUsers = () => {
+    if (!isClient) return
+
     const users = localStorage.getItem("users")
     if (users) {
       const userList = JSON.parse(users)
@@ -73,6 +76,8 @@ export default function LoginPage() {
   }
 
   const createFreshAdmin = () => {
+    if (!isClient) return
+
     // Komplett neue Daten erstellen
     const freshUsers = [
       {
@@ -114,6 +119,8 @@ export default function LoginPage() {
   }
 
   const generateSampleData = () => {
+    if (!isClient) return
+
     if (confirm("Beispieldaten generieren? (Überschreibt vorhandene Daten)")) {
       // Wachen erstellen
       const stations = [
@@ -261,6 +268,8 @@ export default function LoginPage() {
   }
 
   const exportData = () => {
+    if (!isClient) return
+
     const dataExport = {
       users: localStorage.getItem("users"),
       vehicles: localStorage.getItem("vehicles"),
@@ -284,6 +293,8 @@ export default function LoginPage() {
   }
 
   const importData = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isClient) return
+
     const file = event.target.files?.[0]
     if (!file) return
 
@@ -329,6 +340,8 @@ export default function LoginPage() {
       setError("Falsches Passwort für Administrator. Verwenden Sie: admin")
       return
     }
+
+    if (!isClient) return
 
     // Benutzer aus localStorage laden
     const savedUsers = localStorage.getItem("users")
@@ -386,7 +399,7 @@ export default function LoginPage() {
     }
   }
 
-  // Render nur wenn Client-side
+  // Render nothing on server-side
   if (!isClient) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-orange-50">
@@ -445,6 +458,58 @@ export default function LoginPage() {
                 Anmelden
               </Button>
             </form>
+
+            {/* Debug-Bereich */}
+            <div className="mt-6 pt-4 border-t border-gray-200">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Entwickler-Tools</h3>
+
+              <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
+                <div className="bg-gray-50 p-2 rounded">
+                  <div className="font-medium">Benutzer: {stats.users}</div>
+                </div>
+                <div className="bg-gray-50 p-2 rounded">
+                  <div className="font-medium">Fahrzeuge: {stats.vehicles}</div>
+                </div>
+                <div className="bg-gray-50 p-2 rounded">
+                  <div className="font-medium">Wachen: {stats.stations}</div>
+                </div>
+                <div className="bg-gray-50 p-2 rounded">
+                  <div className="font-medium">Einsätze: {stats.emergencies}</div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <Button onClick={showAllUsers} variant="outline" size="sm" className="text-xs">
+                    Benutzer anzeigen
+                  </Button>
+                  <Button onClick={generateSampleData} variant="outline" size="sm" className="text-xs">
+                    Beispieldaten
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button onClick={exportData} variant="outline" size="sm" className="text-xs">
+                    Daten exportieren
+                  </Button>
+                  <div>
+                    <input type="file" accept=".json" onChange={importData} className="hidden" id="import-file" />
+                    <Button
+                      onClick={() => document.getElementById("import-file")?.click()}
+                      variant="outline"
+                      size="sm"
+                      className="text-xs w-full"
+                    >
+                      Daten importieren
+                    </Button>
+                  </div>
+                </div>
+
+                <Button onClick={resetAllData} variant="outline" size="sm" className="w-full text-xs text-red-600">
+                  Alle Daten löschen
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
