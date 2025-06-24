@@ -12,15 +12,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 import {
   Shield,
-  Truck,
   AlertTriangle,
   LogOut,
   Smartphone,
   RefreshCw,
   Wifi,
   WifiOff,
-  CheckCircle,
-  Phone,
   Download,
   Bell,
   Vibrate,
@@ -177,14 +174,22 @@ export default function ProfessionalMobilePage() {
   const [deviceInfo, setDeviceInfo] = useState<any>({})
   const [isScreenLocked, setIsScreenLocked] = useState(false)
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [isClient, setIsClient] = useState(false)
 
   // Refs
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const wakeLockRef = useRef<any>(null)
 
+  // Client-side only flag
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
   // Device Information
   useEffect(() => {
+    if (!isClient) return
+
     const getDeviceInfo = async () => {
       const info: any = {
         userAgent: navigator.userAgent,
@@ -226,34 +231,36 @@ export default function ProfessionalMobilePage() {
     }
 
     getDeviceInfo()
-  }, [])
+  }, [isClient])
 
   // Geolocation
   useEffect(() => {
-    if ("geolocation" in navigator && settings.autoSync) {
-      const watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          setCurrentLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          })
-        },
-        (error) => {
-          console.error("Geolocation error:", error)
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 60000,
-        },
-      )
+    if (!isClient || !("geolocation" in navigator) || !settings.autoSync) return
 
-      return () => navigator.geolocation.clearWatch(watchId)
-    }
-  }, [settings.autoSync])
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setCurrentLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        })
+      },
+      (error) => {
+        console.error("Geolocation error:", error)
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000,
+      },
+    )
+
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [settings.autoSync, isClient])
 
   // Screen Wake Lock
   const requestWakeLock = async () => {
+    if (!isClient) return
+
     try {
       if ("wakeLock" in navigator) {
         wakeLockRef.current = await (navigator as any).wakeLock.request("screen")
@@ -274,6 +281,8 @@ export default function ProfessionalMobilePage() {
 
   // PWA Installation
   useEffect(() => {
+    if (!isClient) return
+
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e)
@@ -290,39 +299,41 @@ export default function ProfessionalMobilePage() {
     return () => {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt)
     }
-  }, [])
+  }, [isClient])
 
   // Service Worker Registration
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker
-        .register("/sw.js")
-        .then((registration) => {
-          console.log("SW registered: ", registration)
+    if (!isClient || !("serviceWorker" in navigator)) return
 
-          // Check for updates
-          registration.addEventListener("updatefound", () => {
-            const newWorker = registration.installing
-            if (newWorker) {
-              newWorker.addEventListener("statechange", () => {
-                if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-                  // New version available
-                  if (confirm("Eine neue Version ist verfügbar. Jetzt aktualisieren?")) {
-                    window.location.reload()
-                  }
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((registration) => {
+        console.log("SW registered: ", registration)
+
+        // Check for updates
+        registration.addEventListener("updatefound", () => {
+          const newWorker = registration.installing
+          if (newWorker) {
+            newWorker.addEventListener("statechange", () => {
+              if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                // New version available
+                if (confirm("Eine neue Version ist verfügbar. Jetzt aktualisieren?")) {
+                  window.location.reload()
                 }
-              })
-            }
-          })
+              }
+            })
+          }
         })
-        .catch((registrationError) => {
-          console.log("SW registration failed: ", registrationError)
-        })
-    }
-  }, [])
+      })
+      .catch((registrationError) => {
+        console.log("SW registration failed: ", registrationError)
+      })
+  }, [isClient])
 
   // Settings Management
   useEffect(() => {
+    if (!isClient) return
+
     const savedSettings = localStorage.getItem("app-settings")
     if (savedSettings) {
       try {
@@ -332,21 +343,23 @@ export default function ProfessionalMobilePage() {
         console.error("Failed to parse settings:", error)
       }
     }
-  }, [])
+  }, [isClient])
 
   useEffect(() => {
+    if (!isClient) return
     localStorage.setItem("app-settings", JSON.stringify(settings))
-  }, [settings])
+  }, [settings, isClient])
 
   // Notification Permission
   useEffect(() => {
-    if ("Notification" in window) {
-      setNotificationPermission(Notification.permission)
-    }
-  }, [])
+    if (!isClient || !("Notification" in window)) return
+    setNotificationPermission(Notification.permission)
+  }, [isClient])
 
   // Online/Offline Detection
   useEffect(() => {
+    if (!isClient) return
+
     const handleOnline = () => {
       setIsOnline(true)
       if (settings.autoSync) {
@@ -366,30 +379,33 @@ export default function ProfessionalMobilePage() {
       window.removeEventListener("online", handleOnline)
       window.removeEventListener("offline", handleOffline)
     }
-  }, [settings.autoSync])
+  }, [settings.autoSync, isClient])
 
   // Auto Sync
   useEffect(() => {
-    if (settings.autoSync && isLoggedIn && user && isOnline) {
-      syncIntervalRef.current = setInterval(() => {
-        syncData()
-      }, settings.syncInterval)
+    if (!isClient || !settings.autoSync || !isLoggedIn || !user || !isOnline) return
 
-      return () => {
-        if (syncIntervalRef.current) {
-          clearInterval(syncIntervalRef.current)
-        }
+    syncIntervalRef.current = setInterval(() => {
+      syncData()
+    }, settings.syncInterval)
+
+    return () => {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current)
       }
     }
-  }, [settings.autoSync, settings.syncInterval, isLoggedIn, user, isOnline])
+  }, [settings.autoSync, settings.syncInterval, isLoggedIn, user, isOnline, isClient])
 
   // Domain Info
   useEffect(() => {
+    if (!isClient) return
     setCurrentDomain(window.location.origin)
-  }, [])
+  }, [isClient])
 
   // Initial Data Load
   useEffect(() => {
+    if (!isClient) return
+
     loadAllData()
     setIsLoading(false)
 
@@ -424,7 +440,7 @@ export default function ProfessionalMobilePage() {
     return () => {
       window.removeEventListener("storage", handleStorageChange)
     }
-  }, [selectedVehicle, processedJSprechIds])
+  }, [selectedVehicle, processedJSprechIds, isClient])
 
   // Functions
   const installPWA = async () => {
@@ -439,24 +455,23 @@ export default function ProfessionalMobilePage() {
   }
 
   const requestNotificationPermission = async () => {
-    if ("Notification" in window) {
-      const permission = await Notification.requestPermission()
-      setNotificationPermission(permission)
+    if (!isClient || !("Notification" in window)) return
 
-      if (permission === "granted") {
-        new Notification("🚨 Feuerwehr Mobile", {
-          body: "Benachrichtigungen sind jetzt aktiviert!",
-          icon: "/icon-192.png",
-          badge: "/icon-192.png",
-        })
-      }
+    const permission = await Notification.requestPermission()
+    setNotificationPermission(permission)
+
+    if (permission === "granted") {
+      new Notification("🚨 Feuerwehr Mobile", {
+        body: "Benachrichtigungen sind jetzt aktiviert!",
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+      })
     }
   }
 
   const testVibration = () => {
-    if ("vibrate" in navigator && settings.vibrationEnabled) {
-      navigator.vibrate([200, 100, 200, 100, 200])
-    }
+    if (!isClient || !("vibrate" in navigator) || !settings.vibrationEnabled) return
+    navigator.vibrate([200, 100, 200, 100, 200])
   }
 
   const testSound = () => {
@@ -466,6 +481,8 @@ export default function ProfessionalMobilePage() {
   }
 
   const playAlertSound = () => {
+    if (!isClient) return
+
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
     }
@@ -488,6 +505,8 @@ export default function ProfessionalMobilePage() {
   }
 
   const loadAllData = useCallback(() => {
+    if (!isClient) return
+
     console.log("=== MOBILE APP: LADE ALLE DATEN ===")
     setSyncStatus("syncing")
     setSyncProgress(0)
@@ -525,10 +544,10 @@ export default function ProfessionalMobilePage() {
       console.error("Fehler beim Laden der Daten:", error)
       setSyncStatus("error")
     }
-  }, [])
+  }, [isClient])
 
   const syncData = useCallback(() => {
-    if (!user || !isOnline) return
+    if (!isClient || !user || !isOnline) return
 
     setSyncStatus("syncing")
 
@@ -571,7 +590,7 @@ export default function ProfessionalMobilePage() {
       console.error("Sync error:", error)
       setSyncStatus("error")
     }
-  }, [user, isOnline, vehicles, emergencies, selectedVehicle])
+  }, [user, isOnline, vehicles, emergencies, selectedVehicle, isClient])
 
   const forceSync = useCallback(() => {
     console.log("🔄 Erzwinge Synchronisation...")
@@ -605,7 +624,7 @@ export default function ProfessionalMobilePage() {
         setJSprechRequests(newJRequests)
 
         // Native Benachrichtigung
-        if (notificationPermission === "granted") {
+        if (isClient && notificationPermission === "granted") {
           new Notification("📞 J-Sprechaufforderung", {
             body: `Leitstelle fordert Sprechkontakt für ${selectedVehicle.callSign}`,
             icon: "/icon-192.png",
@@ -624,7 +643,7 @@ export default function ProfessionalMobilePage() {
         if (settings.soundEnabled) {
           playAlertSound()
         }
-        if (settings.vibrationEnabled && "vibrate" in navigator) {
+        if (isClient && settings.vibrationEnabled && "vibrate" in navigator) {
           navigator.vibrate([200, 100, 200, 100, 200])
         }
       }
@@ -656,6 +675,8 @@ export default function ProfessionalMobilePage() {
       setLoginError("Bitte geben Sie einen Benutzername ein.")
       return
     }
+
+    if (!isClient) return
 
     const savedUsers = localStorage.getItem("users")
     if (!savedUsers) {
@@ -723,6 +744,8 @@ export default function ProfessionalMobilePage() {
   }
 
   const loadUserData = (currentUser: UserType) => {
+    if (!isClient) return
+
     const savedVehicles = localStorage.getItem("vehicles")
     if (savedVehicles) {
       const allVehicles = JSON.parse(savedVehicles)
@@ -751,7 +774,9 @@ export default function ProfessionalMobilePage() {
     releaseWakeLock()
 
     // Remembered User löschen
-    localStorage.removeItem("remembered-user")
+    if (isClient) {
+      localStorage.removeItem("remembered-user")
+    }
   }
 
   const selectVehicle = (vehicleId: string) => {
@@ -759,6 +784,8 @@ export default function ProfessionalMobilePage() {
     if (vehicle) {
       setSelectedVehicle(vehicle)
       setJSprechRequests([])
+
+      if (!isClient) return
 
       const savedStatusLog = localStorage.getItem("statusLog")
       if (savedStatusLog) {
@@ -783,7 +810,7 @@ export default function ProfessionalMobilePage() {
   }
 
   const updateVehicleStatus = (newStatus: number) => {
-    if (!selectedVehicle || !user) return
+    if (!selectedVehicle || !user || !isClient) return
 
     const updatedVehicle = {
       ...selectedVehicle,
@@ -853,11 +880,25 @@ export default function ProfessionalMobilePage() {
 
   // Auto-Login mit Remember Me
   useEffect(() => {
+    if (!isClient || isLoggedIn) return
+
     const rememberedUser = localStorage.getItem("remembered-user")
-    if (rememberedUser && !isLoggedIn) {
+    if (rememberedUser) {
       setLoginForm((prev) => ({ ...prev, username: rememberedUser, rememberMe: true }))
     }
-  }, [isLoggedIn])
+  }, [isLoggedIn, isClient])
+
+  // Render nothing on server-side
+  if (!isClient) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-red-600" />
+          <p>Lade Anwendung...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (
@@ -1165,162 +1206,126 @@ export default function ProfessionalMobilePage() {
 
       {/* J-Sprechaufforderungen Banner */}
       {jSprechRequests.length > 0 && (
-        <div className="bg-yellow-500 text-black p-3 animate-pulse">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Phone className="h-5 w-5 animate-bounce" />
-              <div>
-                <p className="font-bold">J-SPRECHAUFFORDERUNG</p>
-                <p className="text-sm">Leitstelle fordert Sprechkontakt - {jSprechRequests.length} Anfrage(n)</p>
-                <p className="text-xs">Letzte: {new Date(jSprechRequests[0].timestamp).toLocaleTimeString()}</p>
+        <Card className="m-4 bg-orange-100 border-orange-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bell className="h-5 w-5 text-orange-600 animate-pulse" />
+                <div>
+                  <p className="font-medium text-orange-900">J-Sprechaufforderung</p>
+                  <p className="text-sm text-orange-700">
+                    Leitstelle fordert Sprechkontakt für {selectedVehicle?.callSign}
+                  </p>
+                </div>
               </div>
+              <Button onClick={dismissJSprechRequest} size="sm" variant="outline">
+                Verstanden
+              </Button>
             </div>
-            <Button
-              onClick={dismissJSprechRequest}
-              variant="ghost"
-              size="sm"
-              className="text-black hover:bg-yellow-400"
-            >
-              <CheckCircle className="h-4 w-4" />
-              Bestätigen
-            </Button>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="p-4">
-        {!selectedVehicle ? (
-          // Fahrzeugauswahl
-          <Card className="bg-gray-800 border-gray-700">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-white">
-                <Truck className="h-5 w-5" />
-                Fahrzeug auswählen
-                <Badge variant="outline" className="ml-auto border-gray-600 text-gray-300">
-                  {vehicles.length} verfügbar
-                </Badge>
-              </CardTitle>
-              <p className="text-sm text-gray-400">Wählen Sie das Fahrzeug aus, das Sie besetzen möchten</p>
-              {lastSync && (
-                <p className="text-xs text-gray-500">Letzte Aktualisierung: {lastSync.toLocaleTimeString()}</p>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {vehicles.length > 0 ? (
-                vehicles.map((vehicle) => (
-                  <Button
-                    key={vehicle.id}
-                    onClick={() => selectVehicle(vehicle.id)}
-                    variant="outline"
-                    className="w-full justify-start h-auto p-4 bg-gray-700 border-gray-600 hover:bg-gray-600 text-white"
-                  >
-                    <div className="flex items-center gap-3 w-full">
-                      <div
-                        className={`w-4 h-4 rounded-full ${STATUS_COLORS[vehicle.status as keyof typeof STATUS_COLORS]}`}
-                      />
-                      <div className="text-left flex-1">
-                        <div className="font-semibold">{vehicle.callSign}</div>
-                        <div className="text-sm text-gray-300">{vehicle.type}</div>
-                        <div className="text-xs text-gray-400">
-                          Status {vehicle.status}: {STATUS_LABELS[vehicle.status as keyof typeof STATUS_LABELS]}
-                        </div>
-                        {vehicle.lastUpdate && (
-                          <div className="text-xs text-gray-500">
-                            Aktualisiert: {new Date(vehicle.lastUpdate).toLocaleTimeString()}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </Button>
-                ))
-              ) : (
-                <div className="text-center text-gray-400 py-8">
-                  <Truck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Keine Fahrzeuge für Ihre Wache verfügbar</p>
-                  <p className="text-xs mt-2">Wache: {user?.station}</p>
-                  <Button onClick={forceSync} variant="outline" size="sm" className="mt-4">
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Aktualisieren
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          // Hauptansicht mit Tabs
-          <Tabs defaultValue="status" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-2 bg-gray-800 border-gray-700">
-              <TabsTrigger value="status" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">
-                Status
+      {/* Main Content */}
+      <div className="p-4 space-y-4">
+        {/* Vehicle Selection */}
+        <Tabs defaultValue={selectedVehicle ? selectedVehicle.id : "none"} className="w-full">
+          <TabsList className="bg-gray-800 text-gray-300 rounded-md">
+            <TabsTrigger value="none" className="data-[state=active]:bg-gray-700">
+              Übersicht
+            </TabsTrigger>
+            {vehicles.map((vehicle) => (
+              <TabsTrigger
+                key={vehicle.id}
+                value={vehicle.id}
+                className="data-[state=active]:bg-gray-700"
+                onClick={() => selectVehicle(vehicle.id)}
+              >
+                {vehicle.callSign}
               </TabsTrigger>
-              <TabsTrigger value="alarms" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">
-                Alarme
-              </TabsTrigger>
-            </TabsList>
+            ))}
+          </TabsList>
 
-            <TabsContent value="status" className="space-y-4">
-              {/* FMS-Style Display */}
-              <Card className="bg-black border-2 border-gray-600">
-                <CardContent className="p-6">
-                  <div className="text-center space-y-4">
-                    {/* Fahrzeug-Display */}
-                    <div className="text-6xl font-bold text-red-600">{selectedVehicle.status}</div>
-                    <div className="text-sm text-gray-400">
-                      {STATUS_LABELS[selectedVehicle.status as keyof typeof STATUS_LABELS]}
+          <TabsContent value="none" className="pt-4">
+            <Card className="bg-gray-800 border-gray-700 text-white">
+              <CardHeader>
+                <CardTitle>Fahrzeugübersicht</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="list-none space-y-2">
+                  {vehicles.map((vehicle) => (
+                    <li key={vehicle.id} className="flex items-center justify-between">
+                      <span>{vehicle.callSign}</span>
+                      <Badge className={STATUS_COLORS[vehicle.status as keyof typeof STATUS_COLORS]}>
+                        {STATUS_SHORT_LABELS[vehicle.status as keyof typeof STATUS_SHORT_LABELS]}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+
+            {emergencies.length > 0 && (
+              <Card className="bg-gray-800 border-gray-700 text-white mt-4">
+                <CardHeader>
+                  <CardTitle>Aktive Einsätze</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="list-none space-y-2">
+                    {emergencies.map((emergency) => (
+                      <li key={emergency.id} className="flex items-center justify-between">
+                        <span>{emergency.title}</span>
+                        <Badge variant="secondary">{emergency.priority}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* Vehicle Details */}
+          {selectedVehicle && (
+            <TabsContent value={selectedVehicle.id} className="pt-4">
+              <Card className="bg-gray-800 border-gray-700 text-white">
+                <CardHeader>
+                  <CardTitle>{selectedVehicle.callSign}</CardTitle>
+                  <p className="text-sm text-gray-400">{selectedVehicle.type}</p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-400">Status</p>
+                      <Badge className={STATUS_COLORS[selectedVehicle.status as keyof typeof STATUS_COLORS]}>
+                        {STATUS_LABELS[selectedVehicle.status as keyof typeof STATUS_LABELS]}
+                      </Badge>
                     </div>
+                    <div>
+                      <p className="text-sm text-gray-400">Letzte Änderung</p>
+                      <p className="text-right">
+                        {selectedVehicle.lastUpdate ? new Date(selectedVehicle.lastUpdate).toLocaleTimeString() : "Nie"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Status Update Buttons */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {[1, 2, 3, 4, 6].map((status) => (
+                      <Button
+                        key={status}
+                        variant="secondary"
+                        className="w-full"
+                        onClick={() => updateVehicleStatus(status)}
+                      >
+                        {STATUS_SHORT_LABELS[status as keyof typeof STATUS_SHORT_LABELS]}
+                      </Button>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
-
-              {/* Status Buttons */}
-              <div className="grid grid-cols-3 gap-3">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((status) => (
-                  <Button
-                    key={status}
-                    onClick={() => updateVehicleStatus(status)}
-                    variant="secondary"
-                    className={`h-14 flex flex-col justify-center items-center ${
-                      selectedVehicle.status === status ? "bg-green-600 text-white" : "bg-gray-700 text-gray-300"
-                    }`}
-                  >
-                    <span className="text-xs">{STATUS_SHORT_LABELS[status as keyof typeof STATUS_SHORT_LABELS]}</span>
-                    <span className="text-xl font-bold">{status}</span>
-                  </Button>
-                ))}
-              </div>
             </TabsContent>
-
-            <TabsContent value="alarms">
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-white">Aktuelle Einsätze</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {emergencies.length > 0 ? (
-                    emergencies.map((emergency) => (
-                      <Card key={emergency.id} className="bg-gray-700 border-gray-600 text-white">
-                        <CardHeader>
-                          <CardTitle>{emergency.title}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-sm">{emergency.description}</p>
-                          <p className="text-xs text-gray-400">
-                            {emergency.location} - {emergency.priority}
-                          </p>
-                        </CardContent>
-                      </Card>
-                    ))
-                  ) : (
-                    <div className="text-center text-gray-400 py-8">
-                      <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>Keine aktiven Einsätze</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        )}
+          )}
+        </Tabs>
       </div>
     </div>
   )

@@ -62,10 +62,17 @@ export default function VehiclesPage() {
     type: "",
     station: "",
   })
-
   const [stations, setStations] = useState<any[]>([])
+  const [isClient, setIsClient] = useState(false)
+
+  // Client-side only flag
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   useEffect(() => {
+    if (!isClient) return
+
     const userData = localStorage.getItem("user")
     if (!userData) {
       router.push("/")
@@ -81,22 +88,23 @@ export default function VehiclesPage() {
       setVehicles([])
       localStorage.setItem("vehicles", JSON.stringify([]))
     }
-  }, [router])
+  }, [router, isClient])
 
   useEffect(() => {
+    if (!isClient) return
+
     // Wachen für Dropdown laden
     const savedStations = localStorage.getItem("stations")
     if (savedStations) {
       setStations(JSON.parse(savedStations))
     }
-  }, [])
+  }, [isClient])
 
   // Vehicles in localStorage speichern wenn sie sich ändern
   useEffect(() => {
-    if (vehicles.length > 0) {
-      localStorage.setItem("vehicles", JSON.stringify(vehicles))
-    }
-  }, [vehicles])
+    if (!isClient || vehicles.length === 0) return
+    localStorage.setItem("vehicles", JSON.stringify(vehicles))
+  }, [vehicles, isClient])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -149,7 +157,8 @@ export default function VehiclesPage() {
     setVehicles((prev) => prev.filter((v) => v.id !== vehicleId))
   }
 
-  if (!user) return null
+  // Render nothing on server-side
+  if (!isClient || !user) return null
 
   return (
     <div className="min-h-screen bg-gray-50">
