@@ -25,49 +25,7 @@ import {
 } from "lucide-react"
 import Navigation from "@/components/navigation"
 import { useRouter } from "next/navigation"
-
-interface User {
-  id: string
-  username: string
-  role: string
-  station: string
-}
-
-interface Vehicle {
-  id: string
-  callSign: string
-  type: string
-  station: string
-  status: number
-  location: string
-  lastUpdate?: string
-  isOperational?: boolean
-  crew?: string[]
-}
-
-interface Emergency {
-  id: string
-  title: string
-  description: string
-  location: string
-  priority: string
-  status: string
-  createdAt: string
-  assignedVehicles: string[]
-  coordinates: { lat: number; lng: number }
-}
-
-interface StatusLogEntry {
-  id: string
-  vehicleId: string
-  vehicleCallSign: string
-  oldStatus: number
-  newStatus: number
-  timestamp: string
-  confirmed: boolean
-  jSprechSent?: boolean
-  userId?: string
-}
+import type { User, Vehicle, Emergency, StatusLogEntry } from "@/lib/types"
 
 const STATUS_LABELS = {
   0: "Priorisierter Sprechwunsch",
