@@ -175,27 +175,39 @@ export default function ProfessionalDashboard() {
   const loadDashboardData = useCallback((currentUser: User) => {
     measurePerformance("Dashboard Data Load", () => {
       try {
-        // Fahrzeuge laden
+        // Fahrzeuge laden - NULL CHECK HINZUGEFÜGT
         const savedVehicles = storage.get<Vehicle[]>("vehicles", [])
-        let userVehicles = savedVehicles
+        let userVehicles: Vehicle[] = []
 
-        // Für Feuerwehrleute nur Fahrzeuge der eigenen Wache
-        if (currentUser.role === "firefighter") {
-          userVehicles = savedVehicles.filter((v) => v.station === currentUser.station)
+        if (savedVehicles && Array.isArray(savedVehicles)) {
+          userVehicles = savedVehicles
+
+          // Für Feuerwehrleute nur Fahrzeuge der eigenen Wache
+          if (currentUser.role === "firefighter") {
+            userVehicles = savedVehicles.filter((v) => v.station === currentUser.station)
+          }
         }
 
-        // Einsätze laden
+        // Einsätze laden - NULL CHECK HINZUGEFÜGT
         const savedEmergencies = storage.get<Emergency[]>("emergencies", [])
-        const activeEmergencies = savedEmergencies.filter((e) => e.status === "active")
+        let activeEmergencies: Emergency[] = []
 
-        // Status-Log laden
+        if (savedEmergencies && Array.isArray(savedEmergencies)) {
+          activeEmergencies = savedEmergencies.filter((e) => e.status === "active")
+        }
+
+        // Status-Log laden - NULL CHECK HINZUGEFÜGT
         const savedStatusLog = storage.get<StatusLogEntry[]>("statusLog", [])
-        let userStatusLog = savedStatusLog
+        let userStatusLog: StatusLogEntry[] = []
 
-        // Für Feuerwehrleute nur Status-Log der eigenen Wache
-        if (currentUser.role === "firefighter") {
-          const userVehicleIds = userVehicles.map((v) => v.id)
-          userStatusLog = savedStatusLog.filter((entry) => userVehicleIds.includes(entry.vehicleId))
+        if (savedStatusLog && Array.isArray(savedStatusLog)) {
+          userStatusLog = savedStatusLog
+
+          // Für Feuerwehrleute nur Status-Log der eigenen Wache
+          if (currentUser.role === "firefighter") {
+            const userVehicleIds = userVehicles.map((v) => v.id)
+            userStatusLog = savedStatusLog.filter((entry) => userVehicleIds.includes(entry.vehicleId))
+          }
         }
 
         // Statistiken berechnen
@@ -232,7 +244,8 @@ export default function ProfessionalDashboard() {
       outOfService: vehicles.filter((v) => !v.isOperational || v.status === 6).length,
       byType: vehicles.reduce(
         (acc, v) => {
-          acc[v.type.name] = (acc[v.type.name] || 0) + 1
+          const typeName = v.type?.name || v.type || "Unbekannt"
+          acc[typeName] = (acc[typeName] || 0) + 1
           return acc
         },
         {} as Record<string, number>,
@@ -251,7 +264,8 @@ export default function ProfessionalDashboard() {
       ),
       byCategory: emergencies.reduce(
         (acc, e) => {
-          acc[e.category.name] = (acc[e.category.name] || 0) + 1
+          const categoryName = e.category?.name || "Unbekannt"
+          acc[categoryName] = (acc[categoryName] || 0) + 1
           return acc
         },
         {} as Record<string, number>,
@@ -282,7 +296,8 @@ export default function ProfessionalDashboard() {
       },
       performance: {
         responseTimeCompliance: 95, // TODO: Echte Berechnung
-        equipmentReadiness: Math.round((vehicleStats.available / vehicleStats.total) * 100),
+        equipmentReadiness:
+          vehicleStats.total > 0 ? Math.round((vehicleStats.available / vehicleStats.total) * 100) : 0,
         personnelReadiness: 90, // TODO: Echte Berechnung
       },
     }
@@ -501,7 +516,11 @@ export default function ProfessionalDashboard() {
                   {state.statistics.vehicles.available}/{state.statistics.vehicles.total}
                 </div>
                 <Progress
-                  value={(state.statistics.vehicles.available / state.statistics.vehicles.total) * 100}
+                  value={
+                    state.statistics.vehicles.total > 0
+                      ? (state.statistics.vehicles.available / state.statistics.vehicles.total) * 100
+                      : 0
+                  }
                   className="mt-2"
                 />
               </CardContent>
@@ -726,11 +745,14 @@ export default function ProfessionalDashboard() {
                                 </Badge>
                               )}
                             </h3>
-                            <p className="text-sm text-gray-600">{vehicle.type.name}</p>
+                            <p className="text-sm text-gray-600">
+                              {typeof vehicle.type === "string" ? vehicle.type : vehicle.type?.name || "Unbekannt"}
+                            </p>
                             <p className="text-sm text-gray-500">{vehicle.station}</p>
-                            {vehicle.crew.length > 0 && (
+                            {vehicle.crew && vehicle.crew.length > 0 && (
                               <p className="text-xs text-blue-600">
-                                Besatzung: {vehicle.crew.map((c) => c.username).join(", ")}
+                                Besatzung:{" "}
+                                {vehicle.crew.map((c) => (typeof c === "string" ? c : c.username)).join(", ")}
                               </p>
                             )}
                           </div>
