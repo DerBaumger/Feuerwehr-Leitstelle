@@ -503,7 +503,7 @@ export default function Navigation({ user }: NavigationProps) {
                         {user.firstName} {user.lastName}
                       </p>
                       <p className="text-xs text-gray-500">{user.station}</p>
-                      <Badge className={getRoleColor(user.role)} variant="outline" size="sm">
+                      <Badge className={getRoleColor(user.role)} variant="outline">
                         {getRoleLabel(user.role)}
                       </Badge>
                     </div>
