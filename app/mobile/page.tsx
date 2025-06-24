@@ -610,10 +610,14 @@ export default function ProfessionalMobilePage() {
             body: `Leitstelle fordert Sprechkontakt für ${selectedVehicle.callSign}`,
             icon: "/icon-192.png",
             badge: "/icon-192.png",
-            vibrate: settings.vibrationEnabled ? [200, 100, 200, 100, 200] : [],
             requireInteraction: true,
             tag: "j-sprech-request",
           })
+
+          // Vibration separat handhaben
+          if (settings.vibrationEnabled && "vibrate" in navigator) {
+            navigator.vibrate([200, 100, 200, 100, 200])
+          }
         }
 
         // Sound und Vibration
