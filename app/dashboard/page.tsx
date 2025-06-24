@@ -244,7 +244,16 @@ export default function ProfessionalDashboard() {
       outOfService: vehicles.filter((v) => !v.isOperational || v.status === 6).length,
       byType: vehicles.reduce(
         (acc, v) => {
-          const typeName = v.type?.name || v.type || "Unbekannt"
+          // Sichere String-Konvertierung für den Fahrzeugtyp
+          let typeName: string
+          if (typeof v.type === "string") {
+            typeName = v.type
+          } else if (v.type && typeof v.type === "object" && "name" in v.type) {
+            typeName = String(v.type.name)
+          } else {
+            typeName = "Unbekannt"
+          }
+
           acc[typeName] = (acc[typeName] || 0) + 1
           return acc
         },
@@ -257,14 +266,24 @@ export default function ProfessionalDashboard() {
       total: emergencies.length,
       byPriority: emergencies.reduce(
         (acc, e) => {
-          acc[e.priority] = (acc[e.priority] || 0) + 1
+          const priority = String(e.priority) // Sichere String-Konvertierung
+          acc[priority] = (acc[priority] || 0) + 1
           return acc
         },
         {} as Record<string, number>,
       ),
       byCategory: emergencies.reduce(
         (acc, e) => {
-          const categoryName = e.category?.name || "Unbekannt"
+          // Sichere String-Konvertierung für die Kategorie
+          let categoryName: string
+          if (typeof e.category === "string") {
+            categoryName = e.category
+          } else if (e.category && typeof e.category === "object" && "name" in e.category) {
+            categoryName = String(e.category.name)
+          } else {
+            categoryName = "Unbekannt"
+          }
+
           acc[categoryName] = (acc[categoryName] || 0) + 1
           return acc
         },
@@ -272,7 +291,8 @@ export default function ProfessionalDashboard() {
       ),
       byStatus: emergencies.reduce(
         (acc, e) => {
-          acc[e.status] = (acc[e.status] || 0) + 1
+          const status = String(e.status) // Sichere String-Konvertierung
+          acc[status] = (acc[status] || 0) + 1
           return acc
         },
         {} as Record<string, number>,
