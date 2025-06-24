@@ -544,7 +544,7 @@ export default function ProfessionalMobilePage() {
           setLastSync(new Date())
 
           if (selectedVehicle) {
-            const updatedSelectedVehicle = userStationVehicles.find((v) => v.id === selectedVehicle.id)
+            const updatedSelectedVehicle = userStationVehicles.find((v: Vehicle) => v.id === selectedVehicle.id)
             if (updatedSelectedVehicle) {
               setSelectedVehicle(updatedSelectedVehicle)
             } else {
