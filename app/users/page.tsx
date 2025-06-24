@@ -30,10 +30,16 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    username: string
+    email: string
+    role: "administrator" | "dispatcher" | "firefighter"
+    station: string
+    password: string
+  }>({
     username: "",
     email: "",
-    role: "firefighter" as const,
+    role: "firefighter",
     station: "",
     password: "",
   })
