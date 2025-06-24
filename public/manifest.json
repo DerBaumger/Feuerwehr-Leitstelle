@@ -1,0 +1,126 @@
+{
+  "name": "Feuerwehr Leitstelle Mobile",
+  "short_name": "FF Mobile",
+  "description": "Offizielle mobile Anwendung für Feuerwehrleute zur Statusmeldung und Einsatzverwaltung",
+  "start_url": "/mobile",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#dc2626",
+  "theme_color": "#dc2626",
+  "scope": "/",
+  "lang": "de-DE",
+  "dir": "ltr",
+  "categories": ["utilities", "productivity", "business"],
+  "icons": [
+    {
+      "src": "/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-mobile-1.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Fahrzeugstatus-Übersicht"
+    },
+    {
+      "src": "/screenshot-mobile-2.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "FMS-Statusmeldung"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Status melden",
+      "short_name": "Status",
+      "description": "Fahrzeugstatus schnell ändern",
+      "url": "/mobile?action=status",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Einsätze",
+      "short_name": "Alarme",
+      "description": "Aktuelle Einsätze anzeigen",
+      "url": "/mobile?action=alarms",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Notfall",
+      "short_name": "SOS",
+      "description": "Notfall-Statusmeldung",
+      "url": "/mobile?action=emergency",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "edge_side_panel": {
+    "preferred_width": 400
+  }
+}
